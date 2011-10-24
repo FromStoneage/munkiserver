@@ -17,7 +17,7 @@ class Computer < ActiveRecord::Base
   
   validates_format_of :hostname,
 
-                      :with => /^[a-zA-Z-\.]+$/,
+                      :with => /^[a-zA-Z0-9\-\.]+$/,
 
                       :message => "must only contain alphanumeric characters, hyphens, and periods"
     
