@@ -1,5 +1,4 @@
 class PackagesController < ApplicationController
-  before_filter :require_valid_unit
   def index
     # TO-DO This query can be rethought because of the way the view uses this list of packages
     # it might be better to grab all the package branches from this environment and then iterate
@@ -11,27 +10,23 @@ class PackagesController < ApplicationController
     end
   end
 
-    def show
-      @package = Package.find_where_params(params)
-      respond_to do |format|
-        if @package.present?
-          format.html
-          format.plist { render :text => @package.to_plist }
-        else
-          format.html { render page_not_found }
-          format.plist { render page_not_found }
-        end
+  def show
+    respond_to do |format|
+      if @package.present?
+        format.html
+        format.plist { render :text => @package.to_plist }
+      else
+        format.html { render page_not_found }
+        format.plist { render page_not_found }
       end
     end
+  end
 
   def edit
-    @package = Package.find_where_params(params)
     @package.environment_id = params[:environment_id] if params[:environment_id].present?
   end
 
   def update
-    @package = Package.find_where_params(params)
-    
     respond_to do |format|
       if @package.update_attributes(params[:package])
         flash[:notice] = "Package was successfully updated."
@@ -46,7 +41,6 @@ class PackagesController < ApplicationController
   end
 
   def new
-    @package = Package.new
   end
 
   def create
@@ -57,7 +51,6 @@ class PackagesController < ApplicationController
                                 :makepkginfo_options => params[:makepkginfo_options],
                                 :special_attributes => {:unit_id => current_unit.id})
     rescue PackageError => e
-      @package = Package.new
       exceptionMessage = e.to_s
     end
 
@@ -76,12 +69,6 @@ class PackagesController < ApplicationController
   end
 
   def destroy
-    @package = Package.find_where_params(params)
-    # if RequireItem.where(:package_id => @package.id).present?
-    #   RequireItem.where(:package_id => @package.id).first.destroy
-    #   @package.destroy
-    #   flash[:notice] = "Package and it's dependency were destroyed successfully"
-    # els
     if @package.destroy
         flash[:notice] = "Package was destroyed successfully"
     end
@@ -125,7 +112,6 @@ class PackagesController < ApplicationController
   
   # Used to download the actual package (typically a .dmg)
   def download
-    @package = Package.find(params[:id])
     if @package.present?
       send_file Munki::Application::PACKAGE_DIR + @package.installer_item_location, :filename => @package.to_s(:download_filename)
       fresh_when :etag => @package, :last_modified => @package.created_at.utc, :public => true
@@ -142,11 +128,77 @@ class PackagesController < ApplicationController
   end
   
   def environment_change
-    @package = Package.find(params[:package_id])
     @environment_id = params[:environment_id] if params[:environment_id].present?
     
     respond_to do |format|
       format.js
+    end
+  end
+
+  def index_shared
+    @packages = Package.shared.where("unit_id != #{current_unit.id}")
+    pb_ids = []
+    @packages.each do |p|
+      pb_ids << p.package_branch_id
+    end
+    @package_branches = PackageBranch.find(pb_ids.uniq)
+    @other_units = Unit.from_other_unit(current_unit)
+  end
+  
+  # Updates the shared package resource by adding a new instance of that package
+  # to the current unit.  This is very basic and gets complicated when that package
+  # has dependencies.  This still needs to be sorted out.
+  def import_shared
+    shared_package = Package.shared.where("unit_id != #{current_unit.id}").find(params[:id])
+    imported_package = Package.import_package(current_unit, shared_package)
+    
+    respond_to do |format|
+      if imported_package.save
+        flash[:notice] = "Successfully imported #{shared_package.display_name} (#{shared_package.version})"
+        format.html { redirect_to edit_package_path(imported_package.to_params) }
+      else
+        flash[:error] = "Unable to import #{shared_package.display_name} (#{shared_package.version})"
+        format.html { redirect_to shared_packages_path(current_unit) }
+      end
+    end
+  end
+  
+  # Import two or more packages from other units,
+  # after import default to staging enviroment, and package shared status to false
+  def import_multiple_shared
+    shared_packages = Package.shared.where("unit_id != #{current_unit.id}").find(params[:selected_records])
+    results = []
+    shared_packages.each do |shared_package|
+      package = Package.import_package(current_unit, shared_package)
+      results << package.save
+    end
+    respond_to do |format|
+      if results.include?(false)
+        flash[:error] = "Failed to import packages"
+        format.html { redirect_to shared_packages_path(current_unit) }
+      else
+        flash[:notice] = "Successfully imported packages"
+        # upon success redirect to staging package index page, change current_environment
+        params[:eid] = 1
+        format.html { redirect_to packages_path(current_unit) }
+      end
+    end
+  end
+  
+  private
+  # Load a singular resource into @package for all actions
+  def load_singular_resource
+    action = params[:action].to_sym
+    if [:show, :edit, :update, :destroy].include?(action)
+      @package = Package.find_where_params(params)
+    elsif [:index, :new, :create, :edit_multiple, :update_multiple, :check_for_updates, :index_shared, :import_shared, :import_multiple_shared].include?(action)
+      @package = Package.new(:unit_id => current_unit.id)
+    elsif [:download].include?(action)      
+      @package = Package.find(params[:id])
+    elsif [:environment_change].include?(action)      
+      @package = Package.find(params[:package_id])
+    else
+      raise Exception.new("Unable to load singular resource for #{action} action in #{params[:controller]} controller.")
     end
   end
 end

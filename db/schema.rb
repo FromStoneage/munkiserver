@@ -11,7 +11,7 @@
 #
 # It's strongly recommended to check this file into your version control system.
 
-ActiveRecord::Schema.define(:version => 20110823222618) do
+ActiveRecord::Schema.define(:version => 20110904192733) do
 
   create_table "bundle_items", :force => true do |t|
     t.integer  "manifest_id"
@@ -259,6 +259,23 @@ ActiveRecord::Schema.define(:version => 20110823222618) do
     t.datetime "force_install_after_date"
   end
 
+  create_table "permissions", :force => true do |t|
+    t.integer  "principal_id"
+    t.string   "principal_type"
+    t.integer  "unit_id"
+    t.integer  "privilege_id"
+    t.datetime "created_at"
+    t.datetime "updated_at"
+  end
+
+  create_table "privileges", :force => true do |t|
+    t.string   "name"
+    t.text     "description"
+    t.boolean  "unit_specific", :default => false
+    t.datetime "created_at"
+    t.datetime "updated_at"
+  end
+
   create_table "require_items", :force => true do |t|
     t.integer  "package_branch_id"
     t.integer  "package_id"
@@ -359,6 +376,23 @@ ActiveRecord::Schema.define(:version => 20110823222618) do
     t.integer  "package_id"
     t.integer  "manifest_id"
     t.string   "manifest_type"
+    t.datetime "created_at"
+    t.datetime "updated_at"
+  end
+
+  create_table "user_group_memberships", :force => true do |t|
+    t.integer  "principal_id",   :null => false
+    t.string   "principal_type", :null => false
+    t.integer  "user_group_id",  :null => false
+    t.datetime "created_at"
+    t.datetime "updated_at"
+  end
+
+  create_table "user_groups", :force => true do |t|
+    t.string   "name"
+    t.string   "shortname"
+    t.text     "description"
+    t.integer  "unit_id"
     t.datetime "created_at"
     t.datetime "updated_at"
   end

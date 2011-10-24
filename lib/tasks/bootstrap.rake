@@ -175,71 +175,37 @@ namespace :bootstrap do
     end
   end
   
-  desc "Load default unit"
+  desc "Create default unit, if none exist"
   task :unit, [:name] => :environment do |t, args|
-    Rake::Task["bootstrap:environments"].invoke if Environment.count == 0
-    name = args.name
-    name ||= "Default"
-    u = Unit.find_or_create_by_name(name)
-    u.shortname = u.conform_name_to_shortname
-    u.key = Unit.generate_key
-    u.description = "Created by bootstrap"
-    unless u.save
-      puts "Default user failed to save: " + u.errors.inspect
-    end
-  end
-  
-  desc "Create default computer group"
-  task :computer_group, [:name] => :environment do |t, args|
-    # Makes we have a unit and an environment to assign
-    Rake::Task["bootstrap:unit"].invoke if Unit.count == 0
-    Rake::Task["bootstrap:environments"].invoke if Environment.count == 0
-    name = args.name
-    name ||= "Default"
-    cg = ComputerGroup.find_or_create_by_name(name)
-    cg.description = "Created by bootstrap"
-    cg.unit = Unit.first
-    cg.environment = Environment.find_by_name("Production")
-    cg.environment = Environment.first if cg.environment.nil?
-    unless cg.save
-      puts "Default computer group failed to save: " + cg.errors.inspect
-    end
-  end
-  
-  desc "Create first user"
-  task :user, [:name] => :environment do |t, args|
-    if User.first.present?
-      puts "First user (#{User.first.username}) already exists"
-    else
-      puts "Generating a new user"    
-      # Make sure we have a unit to assign
-      Rake::Task["bootstrap:unit"].invoke unless Unit.count
-      username = args.name
-      unless username
-        print "Username: "
-        username = STDIN.gets.chomp
+    if Unit.count == 0
+      Rake::Task["bootstrap:environments"].invoke if Environment.count == 0
+      name = args.name
+      name ||= "Default"
+      u = Unit.new(:name => name, :shortname => u.conform_name_to_shortname, :description => "Created by bootstrap")
+      unless u.save
+        puts "Default unit failed to save: " + u.errors.inspect
       end
-      u = User.new(:username => username)
-      print "Email: "
-      u.email = STDIN.gets.chomp
+    end
+  end
+  
+  desc "Create root user"
+  task :root_user => :environment do |t, args|
+    if User.where(:username => "root").first.blank?
+      puts "Generating a root user"
+      u = User.new(:username => "root", :email => "root@localhost.local")
       print "Password: "
       u.password = STDIN.gets.chomp
       print "Confirm password: "
       u.password_confirmation = STDIN.gets.chomp
-      u.super_user = true
-      u.units << Unit.first
       unless u.save
-        puts "Default user failed to save: " + u.errors.inspect
+        puts "Failed to save root user: " + u.errors.inspect
       end
     end
   end
   
-  desc "create a new settings.yaml file optional arguments rake setup:create[hostname] default localhost:3000"
+  desc "Create a settings.yaml file, if missing"
   task :settings, [:settings, :hostname] => :environment do |t, args|
-    if File.exists?("config/settings.yaml")
-      puts "settings.yaml file is already exists"
-    else
-      #if settings.yaml file doesn't exists
+    unless File.exists?("config/settings.yaml")
       hostname = args.hostame
       puts "Grenerating settings.yaml file, if blank default to \"localhost:3000\""
       print "Hostname: "
@@ -249,33 +215,27 @@ namespace :bootstrap do
       end
        h = {}
         File.open( "config/settings.yaml", "w" ) do |file|
-         h[:action_mailer] = {:host => "#{hostname}" }
-         file.write(h.to_yaml)
+          h[:action_mailer] = {:host => "#{hostname}" }
+          file.write(h.to_yaml)
         end
     end
   end
   
-  desc "Load base environments"
+  desc "Create base environments"
   task :environments do |t, args|
-    #Build the staging environment
+    # Build the staging environment
     e = Environment.find_or_create_by_name("Staging")
     e.description = "Created by bootstrap"
     unless e.save
       puts "Staging environment failed to save: " + e.errors.inspect
     end
     
-    #Build the production environment
+    # Build the production environment
     e = Environment.find_or_create_by_name("Production")
     e.description = "Created by bootstrap"
     unless e.save
       puts "Production environment failed to save: " + e.errors.inspect
     end
-  end
-  
-  desc "Generate preflight script"
-  task :prelight_script do |t, args|
-    # Build a preflight script dependant 
-    
   end
   
   desc "Generate crontab jobs passing rails current environment"
@@ -288,6 +248,23 @@ namespace :bootstrap do
     assets_dir = "#{Rails.root}/../munkiserver_assets"
     unless File.exist?(assets_dir)
       `mkdir #{assets_dir}`
+    end
+  end
+  
+  desc "Create privilege database records"
+  task :privileges => :environment do
+    # Create privilege records using name
+    PrivilegeGranter.instance_methods.each do |privilege_name|
+      Privilege.find_or_create_by_name(:name => privilege_name)
+    end
+    # Flag unit-specific privileges
+    Privilege.all.each do |privilege|
+      PrivilegeGranter.unit_specific_privilege_groups.each do |privilege_group_name|
+        if privilege.name.match(/^[a-zA-Z]+_#{privilege_group_name}$/)
+          privilege.unit_specific = true
+          privilege.save
+        end
+      end
     end
   end
 end

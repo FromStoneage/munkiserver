@@ -1,7 +1,7 @@
-class ComputersController < ApplicationController
-  before_filter :require_valid_unit
-  require 'cgi'
+require 'cgi'
 
+class ComputersController < ApplicationController
+  
   def index
     # Set environment at view layer
     @computers = ComputerService.collect(params,current_unit,current_environment)
@@ -13,8 +13,6 @@ class ComputersController < ApplicationController
   end
 
   def new
-    @computer = Computer.new({:unit_id => current_unit.id})
-    
     respond_to do |format|
       format.html
       format.js { render :action => "edit" }
@@ -22,6 +20,7 @@ class ComputersController < ApplicationController
   end
 
   def create
+    # Recreating a new computer object instead of using the one we already created in load_singular_resource
     @computer = Computer.new(params[:computer].merge({:unit_id => current_unit.id}))
     
     respond_to do |format|
@@ -36,8 +35,6 @@ class ComputersController < ApplicationController
   end
   
   def show
-    @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:id]))
-    
     respond_to do |format|
       if @computer.present?
         format.html
@@ -45,8 +42,7 @@ class ComputersController < ApplicationController
         format.plist { render :text => @computer.to_plist}
         format.client_prefs { render :text => @computer.client_prefs.to_plist }
       else
-        MissingManifest.find_or_create_by_manifest_type_and_identifier_and_request_ip(
-        {:manifest_type => Computer.to_s, :identifier => params[:id], :request_ip => request.remote_ip})
+        MissingManifest.find_or_create_by_manifest_type_and_identifier_and_request_ip({:manifest_type => Computer.to_s, :identifier => params[:id], :request_ip => request.remote_ip})
         format.manifest { render :file => "public/404.html", :status => 404, :layout => false}
         format.html { render :file => "public/404.html", :status => 404, :layout => false }
       end
@@ -54,12 +50,9 @@ class ComputersController < ApplicationController
   end
 
   def edit
-    @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:id]))
   end
 
   def update
-    @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:id]))
-    
     respond_to do |format|
       if @computer.update_attributes(params[:computer])
         flash[:notice] = "#{@computer.name} was successfully updated."
@@ -72,8 +65,6 @@ class ComputersController < ApplicationController
   end
 
   def destroy
-    @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:id]))
-    
     if @computer.destroy
       flash[:notice] = "Computer was destroyed successfully"
     end
@@ -122,7 +113,6 @@ class ComputersController < ApplicationController
   # Allows a computer to checkin with the server, notifying it
   # of the last successful munki run.  May be extended in the future.
   def checkin
-    @computer = Computer.find_for_show(nil, params[:id])
     if params[:managed_install_report_plist].present?
       report_hash = ManagedInstallReport.format_report_plist(params[:managed_install_report_plist]).merge({:ip => request.remote_ip})
       @computer.managed_install_reports.build(report_hash)
@@ -181,11 +171,6 @@ class ComputersController < ApplicationController
   end
   
   def environment_change
-    if params[:computer_id] == "new"
-      @computer = Computer.new({:unit_id => current_unit.id})
-    else
-      @computer = Computer.find_for_show(params[:unit_shortname], params[:computer_id])
-    end
     @environment_id = params[:environment_id] if params[:environment_id].present?
     
     respond_to do |format|
@@ -194,24 +179,14 @@ class ComputersController < ApplicationController
   end
   
   def unit_change
-    # make sure if the current user is eligible for the traget unit
-    if params[:unit_id] != current_unit.id and current_user.units.map(&:id).include?(params[:unit_id])
-      computer = Computer.find(params[:computer_id])
-      # tempoary assign the target unit id to computer
-      computer.unit_id = params[:unit_id]
-      @computer = computer
-      @unit = Unit.find(params[:unit_id])
-    else
-      @computer = Computer.find_for_show(params[:unit_shortname], params[:computer_id])
-      @unit = current_unit
-    end
+    @computer.unit_id = params[:unit_id]
+    @unit = Unit.find(params[:unit_id])
     @environment_id = current_environment.id
     
     respond_to do |format|
       format.js
     end
   end
-  
   
   def update_warranty
     @computer = Computer.find_for_show(params[:unit_shortname], params[:computer_id])
@@ -221,5 +196,31 @@ class ComputersController < ApplicationController
       flash[:error] = "#{@computer.name}'s warranty could not be updated."
     end
     redirect_to computer_path(@computer.unit, @computer, anchor: 'warranty_tab')
+  end
+  
+  private
+  # Load a singular resource into @computer for all actions
+  # This is really dense...refactor?
+  def load_singular_resource
+    action = params[:action].to_sym
+    if [:show, :edit, :update, :destroy].include?(action)      
+      @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:id]))
+    elsif [:update_warranty].include?(action)      
+      @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:computer_id]))
+    elsif [:index, :new, :create, :edit_multiple, :update_multiple, :import, :create_import].include?(action)      
+      @computer = Computer.new({:unit_id => current_unit.id})
+    elsif [:unit_change].include?(action)      
+      @computer = Computer.find(params[:computer_id])
+    elsif [:environment_change].include?(action)
+      if params[:computer_id] == "new"
+        @computer = Computer.new({:unit_id => current_unit.id})
+      else
+        @computer = Computer.find_for_show(params[:unit_shortname], params[:computer_id])
+      end
+    elsif [:checkin].include?(action)
+      @computer = Computer.find_for_show(nil, params[:id])
+    else
+      raise Exception("Unable to load singular resource for #{action} action in #{params[:controller]} controller.")
+    end
   end
 end

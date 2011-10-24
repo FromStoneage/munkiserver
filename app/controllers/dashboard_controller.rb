@@ -1,4 +1,6 @@
 class DashboardController < ApplicationController
+  skip_before_filter :load_singular_resource
+  
   def index
   end
   
@@ -8,5 +10,10 @@ class DashboardController < ApplicationController
     respond_to do |format|
       format.js
     end
+  end
+  
+  private
+  def authorize_resource
+    authorize! params[:action], :dashboard
   end
 end

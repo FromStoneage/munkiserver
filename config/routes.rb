@@ -1,5 +1,5 @@
 Munki::Application.routes.draw do  
-  resources :units do
+  resources :units, :except => [:show] do
     member do
       get 'settings/edit' => 'unit_settings#edit'
       put 'settings' => 'unit_settings#update'
@@ -39,7 +39,7 @@ Munki::Application.routes.draw do
       get 'update_warranty', :action => "update_warranty", :as => 'update_warranty'
       
       collection do
-        post :create_import, :force_redirect
+        post :create_import#, :force_redirect
         put :update_multiple
         get :edit_multiple
       end
@@ -51,6 +51,9 @@ Munki::Application.routes.draw do
       
       scope '/packages' do
         match 'add(.:format)', :action => 'new', :via => :get, :as => 'new_package'
+        match "import_shared/:id", :action => 'import_shared', :via => :put, :as => "import_shared_package"
+        match "import_multiple_shared", :action => 'import_multiple_shared', :via => :put, :as => "import_multiple_shared_packages"
+        match "shared", :action => 'index_shared', :via => :get, :as => "shared_packages"
         match 'multiple(.:format)', :action => 'edit_multiple', :via => :get, :as => 'edit_multiple_packages'
         match 'multiple(.:format)', :action => 'update_multiple', :via => :put
         match 'check_for_updates', :action => 'check_for_updates', :via => :get, :as => 'check_for_package_updates'
@@ -66,12 +69,7 @@ Munki::Application.routes.draw do
       end
     end
     
-    resources :shared_packages do
-      get :import, :on => :member
-      collection do
-        get :import_multiple
-      end
-    end
+    resources :user_groups, :except => :show
     
     resources :computer_groups do
       get 'environment_change(.:format)', :action => "environment_change", :as => 'environment_change'
@@ -87,6 +85,10 @@ Munki::Application.routes.draw do
   
   match 'dashboard' => "dashboard#index", :as => "dashboard"
   match 'dashboard/widget/:name' => 'dashboard#widget', :as => "widget"
+  
+  match "permissions" => "permissions#index", :as => "permissions", :via => "GET"
+  match "permissions/edit/:principal_pointer(/:unit_id)" => "permissions#edit", :as => "edit_permissions", :via => "GET"
+  match "permissions" => "permissions#update", :as => "update_permissions", :via => "PUT"
   
   root :to => redirect("/login")
 end

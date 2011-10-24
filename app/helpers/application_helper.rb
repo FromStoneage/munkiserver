@@ -131,9 +131,9 @@ module ApplicationHelper
   end
   
   # Build units menu for currently logged in user
-  def units_menu
+  def unit_menu
     units = current_user.units
-    render :partial => "shared/units_menu", :locals => {:units => units, :current_unit => current_unit}
+    render :partial => "shared/unit_menu", :locals => {:units => units, :current_unit => current_unit}
   end
   
   # Creates auto-complete text field for ASM select
@@ -154,10 +154,12 @@ module ApplicationHelper
       bool = (params[:controller] == "computers")
     when "Computer Groups"
       bool = (params[:controller] == "computer_groups")
+    when "User Groups"
+      bool = (params[:controller] == "user_groups")
     when "Bundles"
-      bool = (params[:controller] == "groups")
+      bool = (params[:controller] == "bundles")
     when "Packages"
-      bool = (params[:controller] == "pkgsinfo")
+      bool = (params[:controller] == "packages")
     end
     bool
   end
@@ -226,14 +228,30 @@ module ApplicationHelper
     render "shared/hash_checkboxes", :locals => {:options => options, :h => h}
   end
   
+  # Should be refactored to be more efficient
   def unit_link(unit, controller)
-    included_controllers = ["computers","packages","computer_groups","bundles","shared_packages","install_items"]
-    controller = "computers" unless included_controllers.include?(controller)
+    raise ArgumentError.new("Unit passed to unit_link method was nil") if unit.nil?
+    known = {"computers" => Computer,"packages" => Package,"computer_groups" => ComputerGroup,"bundles" => Bundle,"shared_packages" => Package,"user_groups" => UserGroup, "permissions" => Permission}
+    controller = known.keys.first unless known.keys.include?(controller)
+    authorized = false
+    # Try to authorize for a specific controller ahead of time
+    while not authorized and known.present?
+      if can? :read, known.delete(controller).new_for_can(unit)
+        authorized = true
+      else
+        controller = known.keys.first
+      end
+    end
+    raise RuntimException.new("#{current_user} does is not authorized to any read actions within the known controllers!") if not authorized
     {:controller => controller, :action => :index, :unit_shortname => unit.to_param}
   end
   
   # Return a macupdate.com URL for the given package
   def macupdate_url(package)
      VersionTracker::MAC_UPDATE_PACKAGE_URL + package.package_branch.version_tracker.web_id.to_s
+  end
+  
+  def principal_list_item(principal, opts={})
+    render :partial => 'shared/principal_list_item', :locals => {:principal => principal, :disabled => opts[:disabled]}
   end
 end

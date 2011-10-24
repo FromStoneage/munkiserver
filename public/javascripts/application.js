@@ -354,7 +354,174 @@ $(document).ready(function() {
     $("#unit-path-select").change(function() {
         $("form#add_package_widget_form").attr("action",$(this).val());
     });
+    
+    // Remove membership links
+    $(".remove-membership").live("click",function() {
+      $(this).parents(".membership-container").first().remove();
+      toggleMembershipPlaceholder();
+      return false;
+    })
+    // Hide disabled remove membership links
+    $(".remove-membership.disabled").hide();
+    
+    // Toggle membership placeholder
+    toggleMembershipPlaceholder();
+    
+    // Make principals draggable
+    $( ".user-group-form #all-principals li" ).draggable({
+        appendTo: "body",
+        helper: "clone",
+        cursor: "pointer"
+    });
+    
+    // Make principals droppable
+    $(".user-group-form #member-principals ul").droppable({
+      activeClass: "ui-state-default",
+      hoverClass: "ui-state-hover",
+      accept: function($ui) {
+        // Return true if there are no matching data-principal-id values within droppable space
+        var principalId = $ui.attr("data-principal-id")
+        ,   $duplicatePrincipals = $(this).find("[data-principal-id=" + principalId + "]");
+        return ($duplicatePrincipals.size() == 0);
+      },
+      drop: function(event, ui) {
+        // Clone the draggable, enable the hidden field, add remove link, and append to the droppable
+        ui.draggable.clone()
+          .find("[name='user_group[principal_ids][]']").removeAttr("disabled").end()
+          .find(".remove-membership").show().end()
+          .appendTo(this);
+        toggleMembershipPlaceholder();
+      }
+    });
+    
+    // // Setup client-side filtering functionality
+    // $(".user-group-filter-wrapper input[type='search']").bind("keyup search", function() {
+    //   var $searchField = $(this);
+    //   var filterString = $searchField.val();
+    // 
+    //   // Run filter if filter string has 1 or more characters
+    //   if(filterString.length >= 1) {
+    //     var $principalWell = $searchField.parent().parent();
+    //     $principalWell.find(".membership-container").each(function() {
+    //       $principal = $(this);
+    //       // Get principal name from special attribute, defaults to "" if there are none
+    //       var principalName = $principal.attr("data-principal-name");
+    //       if(principalName === undefined) {
+    //         // This should never happen...
+    //         principalName = "";
+    //       }
+    //       // Hide/show if principal name contains filter string (ignore case)
+    //       if(principalName.toLowerCase().indexOf(filterString.toLowerCase()) != -1) {
+    //         $principal.show();
+    //       } else {
+    //         $principal.hide();
+    //       }
+    //     });
+    //   } else if (filterString.length == 0) {
+    //     // Show all principals when there is no filter string
+    //     var $principalWell = $searchField.parent().parent();
+    //     $principalWell.find(".membership-container").each(function() {
+    //       $principal = $(this);
+    //       $principal.show();
+    //     });
+    //   }
+    // }).keypress(function(keyEvent) {
+    //   // Ignore any enter/return events
+    //   if(keyEvent.charCode == 13) {
+    //     return false;
+    //   }
+    // });
+
+    // Setup generic client-side filtering functionality
+    // This should be turned into an ajax thing...it blocks the browser
+    $(".list-filter-wrapper input[type='search']").bind("search", function() {
+      console.log(new Date());
+      var $searchField = $(this);
+      var filterString = $searchField.val();      
+      var $list = $searchField.parent().parent().find(".filterable");
+      
+      // Display progress image
+      $(this).parent().children(".loading").show();
+      
+      // Run filter if filter string has 1 or more characters
+      if(filterString.length >= 1) {
+        var hiddenElements = 0;
+        $list.find("li").each(function() {
+          $listItem = $(this);
+          // Get principal name from special attribute, or list item text
+          var filterableString;
+          if($listItem.attr("data-filterable-string")) {
+            filterableString = $listItem.attr("data-filterable-string");
+          } else {
+            filterableString = $listItem.text();
+          }
+          // Hide/show if principal name contains filter string (ignore case)
+          if(filterableString.toLowerCase().indexOf(filterString.toLowerCase()) != -1) {
+            $listItem.show();
+          } else {
+            $listItem.hide();
+            hiddenElements++;
+          }
+          // Check if there are no results and show placeholder
+          if(hiddenElements == $list.find("li").length) {
+            $list.find("li.no-results").show();
+          } else {
+            $list.find("li.no-results").hide();
+          }
+        });
+      } else {
+        // Show all list items when there is no filter string
+        $list.find("li").each(function() {
+          $(this).show();
+        });
+        $list.find("li.no-results").hide();
+      }
+      console.log(new Date());
+      
+      // Remove progress image
+      $(this).parent().children(".loading").hide();
+    }).keypress(function(keyEvent) {
+      // Ignore any enter/return events
+      // if(keyEvent.charCode == 13) {
+      //   $(this).search();
+      //   return false;
+      // }
+    });
+    $("li.no-results").hide()
+    
+    $(".permission-ui li.row").click(function() {
+      $(this)
+        .parent()
+          .children("li.row")
+            .removeClass("highlight")
+          .end()
+        .end()
+        .addClass("highlight");
+    });
+    
+  // Load permission edit for upon principal and unit selection
+  $(".permission-ui li.row").click(function() {
+    var principalPointer = $("#all-principals").find(".row.highlight").attr("data-principal-id");
+    var unitId = $(".unit-container").find(".row.highlight").attr("data-unit-id");
+    if(principalPointer != undefined) {
+      $.getScript("/permissions/edit/" + principalPointer + "/" + unitId); 
+    }
+  });
+  
+  // So permission checkboxes aren't greyed out.  Wasn't working yet.
+  // $(".unclickable").click(function() {
+  //   return false;
+  // });
 }); // end document ready function
+
+function toggleMembershipPlaceholder() {
+  // If there are no members, show the placeholder
+  if($("#member-principals li").length == 1) {
+    $("#member-principals .placeholder").show();
+  } else {
+    $("#member-principals .placeholder").hide();
+  }
+}
 
 function activateMoreInfoLinks() {
   $(".more_info").live('click', (function(){

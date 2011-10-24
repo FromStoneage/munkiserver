@@ -3,9 +3,11 @@ class ApplicationController < ActionController::Base
   protect_from_forgery :except => [:checkin]
   
   before_filter :require_login
+  before_filter :validate_unit_shortname
+  before_filter :load_singular_resource
+  before_filter :authorize_resource
   
   private
-  
   include ApplicationHelper
   
   # Run a rake task in the background
@@ -18,49 +20,35 @@ class ApplicationController < ActionController::Base
   
   # Redirects user to login path if logged_in returns false.
   def require_login
-    # If we are logged in or the action we are requesting is excluded from login requirement
-    if logged_in? or action_and_format_excluded?
-      if logged_in? and current_user.units.empty?
-        flash[:warning] = "You are not permitted to any units!"
-        render :file => "#{Rails.root}/public/generic_error.html", :layout => false
-      end
+    # If client logged in or the action is authorized
+   if logged_in? or munki_client_request?
+      # Let them pass
     else
       flash[:warning] = "You must be logged in to view that page"
       redirect_to login_path(:redirect => request.request_uri)
     end
   end
   
-  def require_valid_unit
-    begin
-      # raise Exception.new("You are not permitted this unit (#{current_unit})") unless current_user.member_of(current_unit)
-      current_unit
-    rescue Exception => e
-      flash[:error] = "The unit you requested (#{params[:unit_shortname]}) does not exist or you do not have permission to it!"
+  # Checks unit_shortname and ensures it refers to a valid unit
+  def validate_unit_shortname
+    if params[:unit_shortname].present? and current_unit.nil?
+      flash[:error] = "The unit you requested (\"#{params[:unit_shortname]}\") does not exist."
       render :file => "#{Rails.root}/public/generic_error.html", :layout => false
     end
   end
   
-  # Checks to see if the requested page is excluded from login requirements
-  # hashes like this: action => [formats, as, array]
-  def action_and_format_excluded?
-    excluded = false
-    # Specify what actions and formats are allowed
-    allowed = {:show => [:manifest, :client_prefs, :plist],:download => [:all], :checkin => [:all]}
-    # Set format
-    format = params[:format].nil? ? "" : params[:format]
-    allowed.each do |action,allowed_formats|
-      # See if this action/format combo was included
-      if action.to_s == params[:action] and allowed_formats.include?(format.to_sym)
-        excluded = true 
-      elsif action.to_s == params[:action] and allowed_formats.include?(:all)
-        excluded = true
-      end
-    end
-    excluded
+  # Does this request look like it is from a munki client?
+  def munki_client_request?
+    (authorized? and params[:format] == "plist")
   end
   
-  def fake_login
-    session[:username] = "default"
+  def authorized?
+    begin
+      authorize_resource
+      true
+    rescue CanCan::AccessDenied
+      false
+    end
   end
 
   def page_not_found
@@ -71,16 +59,21 @@ class ApplicationController < ActionController::Base
     {:file => "#{Rails.root}/public/generic_error.html", :layout => false}
   end
   
-  # Check if the given package has dependency issues if it's required by other packages
-  def is_required?(package)
-    RequireItem.where(:package_id => package.id).present?
+  # Stub for controllers to override
+  def load_singular_resource
+    raise Exception.new("Unable to load singular resource for #{params[:action]} action of #{params[:controller]} controller.")
   end
   
-  protected
+  def authorize_resource
+    authorize! params[:action].to_sym, instance_variable_get("@#{params[:controller].singularize}") || params[:controller].classify.constantize
+  end
   
-  # Sets the Authorization.current_user to the current_user
-  # This is required by the declarative_authorization gem
-  def set_current_user_for_auth
-    Authorization.current_user = current_user
+  rescue_from CanCan::AccessDenied do |exception|
+    flash[:error] = exception.message
+    if request.env["HTTP_REFERER"].present?
+      redirect_to :back
+    else
+      redirect_to root_path
+    end
   end
 end
