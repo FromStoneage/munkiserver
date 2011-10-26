@@ -36,6 +36,21 @@ class Unit < ActiveRecord::Base
       :selected_options => user_ids}]
   end
 
+  def users_who_can_read(controller_name)
+    principals = Permission.where(:privilege_id => Privilege.find_by_name("read_#{controller_name}"), :unit_id => id).map(&:principal)
+    users = []
+    principals.each do |principal|
+      if principal.is_a? User
+        users << principal
+      elsif principal.is_a? UserGroup
+        users << principal.users
+      else
+        raise UserGroupException.new("While retrieving users who can read #{controller_name} from a unit (#{self}), found a principal that was not a User or UserGroup record!")
+      end
+    end
+    users.uniq {|e| e.id }
+  end
+
   def to_s
     name
   end
