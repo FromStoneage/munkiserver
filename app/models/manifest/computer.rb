@@ -13,14 +13,12 @@ class Computer < ActiveRecord::Base
   # Validations
   validate :computer_model
 
-  validates_presence_of :name, :hostname, :mac_address
+  validates_presence_of :name, :mac_address
   
   validates_format_of :hostname,
+                        :with => /^[a-zA-Z0-9\-\.]*$/,
+                        :message => "must only contain alphanumeric characters, hyphens, and periods"
 
-                      :with => /^[a-zA-Z0-9\-\.]+$/,
-
-                      :message => "must only contain alphanumeric characters, hyphens, and periods"
-    
   validates_format_of :mac_address, :with => /^([0-9a-f]{2}(:|$)){6}$/ # mac_address attribute must look something like ff:12:ff:34:ff:56
   validates_uniqueness_of :mac_address,:name, :hostname
   
@@ -261,6 +259,7 @@ class Computer < ActiveRecord::Base
     self.warranty.notifications.create
   end
   
+<<<<<<< HEAD
   # Return the most frequent user of the computer as the primary user
   def primary_user
     users = self.managed_install_reports.map(&:console_user).compact.delete_if{|u| u == "<None>"}
@@ -274,5 +273,13 @@ class Computer < ActiveRecord::Base
     a.group_by do |e|
       e
     end.values.max_by(&:size).first
+=======
+  def warranty_expiry_date
+    if warranty.present? and warranty.hw_coverage_end_date.present?
+      warranty.hw_coverage_end_date.to_s(:readable_date)
+    else
+      "unknown"
+    end
+>>>>>>> upstream/master
   end
 end

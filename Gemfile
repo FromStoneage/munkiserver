@@ -11,10 +11,11 @@ gem "client_side_validations"
 gem "whenever"
 gem "plist"
 gem "cancan"
+gem "highline"
+gem "newrelic_rpm"
 
 group :development do
   gem "ruby-debug19" , :require => "ruby-debug"
   gem "rails-erd"
-  gem "highline"
   gem "textmate_backtracer"
 end

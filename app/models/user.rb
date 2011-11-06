@@ -56,11 +56,6 @@ class User < ActiveRecord::Base
     return u if (u != nil) and (User.encrypt(pass, u.salt) == u.hashed_password)
   end
   
-  # Returns true if user is super user
-  def super_user?
-    true
-  end
-  
   # A to string method
   def to_s(style = nil)
     username
@@ -77,6 +72,7 @@ class User < ActiveRecord::Base
     us = UserSetting.new
     self.settings = us
   end
+  
   # over write default to_param use name in the routing instead of id
   def to_param
     username
@@ -118,6 +114,21 @@ class User < ActiveRecord::Base
   
   def name
     username
+  end
+  
+  # Virtual attribute to settings
+  def email_notifications
+    if settings.present?
+      settings.receive_email_notifications.present?
+    else
+      false
+    end
+  end
+  
+  # Virtual attribute to settings
+  def email_notifications=(value)
+    check_settings
+    settings.receive_email_notifications = value
   end
   
   # Returns an array of unit IDs that the user has permission to read.
