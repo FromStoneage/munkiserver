@@ -64,38 +64,4 @@ class ComputerService
     
     computers
   end
-  
-  # Returns a collection based on the params passed as well as a unit.
-  # Intended to encapsulate the typical query done for the index action.
-  def self.collect(params, unit, env)
-    # Grab the computers belonging to a specific unit
-    # Set environment    
-    computers = Computer.unit_and_environment(unit,env)
-    
-    # Modify the query for sorting
-    unless params[:order].blank?
-      col = nil
-      # Add valid columns as needed (this protects
-      # against injection attacks or errors)
-      case params[:col]
-        when "mac_address" then col = "mac_address"
-        when "last_report" then col = "last_report"
-        else col = "name"
-      end
-      computers = computers.order(col + " " + params[:order])
-    end
-    
-    # Modify for a specific hostname
-    unless params[:name].blank?
-      computers = computers.where(["name LIKE ?","%#{params[:name]}%"])
-    end
-    
-    # Add pagination using will_paginate gem
-    per_page = params[:per_page]
-    per_page ||= Computer.per_page
-    computers = computers.paginate(:page => params[:page], :per_page => per_page)
-
-    # Return our results
-    computers
-  end
 end

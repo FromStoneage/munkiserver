@@ -1,4 +1,5 @@
 require 'digest'
+require 'os_range_helper'
 
 class Package < ActiveRecord::Base
   magic_mixin :unit_member
@@ -15,6 +16,7 @@ class Package < ActiveRecord::Base
   has_many :install_items, :dependent => :destroy
   has_many :uninstall_items, :dependent => :destroy
   has_many :optional_install_items, :dependent => :destroy
+  has_many :managed_update_items, :dependent => :destroy
   has_many :user_install_items, :dependent => :destroy
   has_many :user_uninstall_items, :dependent => :destroy
   has_many :user_allowed_items, :dependent => :destroy
@@ -46,7 +48,7 @@ class Package < ActiveRecord::Base
   validates :force_install_after_date_string, :date_time => true, :allow_blank => true
   
   FORM_OPTIONS = {:restart_actions         => [['None','None'],['Logout','RequiredLogout'],['Restart','RequiredRestart'],['Shutdown','Shutdown']],
-                  :os_versions             => [['Any',''],['10.4','10.4.0'],['10.5','10.5.0'],['10.6','10.6.0'],['10.7','10.7.0']],
+                  :os_versions             => [[['Any','']], os_range(10,7,0..2), os_range(10,6,0..8), os_range(10,5,0..11)].flatten(1),
                   :installer_types         => [['Package',''],
                                                ['Copy From DMG', 'copy_from_dmg'],
                                                ['App DMG','appdmg'],
@@ -281,6 +283,7 @@ class Package < ActiveRecord::Base
       self.optional_install_items.each(&:destroy)
       self.install_items.each(&:destroy)
       self.uninstall_items.each(&:destroy)
+      self.managed_update_items.each(&:destroy)
       # Handle references to the package branch
       num_of_packages = self.package_branch.packages.where(:unit_id => self.unit_id, :environment_id => self.environment_id_was).count
       if num_of_packages == 1
@@ -486,10 +489,10 @@ class Package < ActiveRecord::Base
     environment_id ||= model_obj.environment_id
     environment = Environment.find(environment_id)
     # Get all the package branches associated with this unit and environment
-    update_for_options = PackageBranch.unit_and_environment(model_obj.unit,environment).map { |e| [e.to_s,e.to_s] unless e.id == model_obj.package_branch.id }.compact
+    update_for_options = PackageBranch.unit_and_environment(model_obj.unit,environment).map { |e| [e.to_s,e.to_s] unless e.id == model_obj.package_branch.id }.compact.sort{|a,b| a[0] <=> b[0]}
     update_for_selected = model_obj.update_for.map(&:package_branch).map(&:to_s)
     # update_for_selected = model_obj.update_for_items.map(&:package_branches).map(&:to_s)
-    requires_options = Package.unit(model_obj.unit).environment(environment).where("id != #{model_obj.id}").map { |e| [e.to_s(:version),e.to_s(:version)] }
+    requires_options = Package.unit(model_obj.unit).environment(environment).where("id != #{model_obj.id}").map { |e| [e.to_s(:version),e.to_s(:version)] }.sort{|a,b| a[0] <=> b[0]}
     requires_selected = model_obj.require_items.map(&:package).map {|e| e.to_s(:version) }
     
     model_name = self.to_s.underscore
