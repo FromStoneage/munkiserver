@@ -28,48 +28,37 @@ module PackagesHelper
     htmlcode += "</p>"
   end
 
-	def package_header(package, editable = nil)
-	  packages = Package.where(:package_branch_id => package.package_branch_id, :unit_id => package.unit_id).order("version ASC")
-	  editable ||= false
-    render :partial => 'record_header', :locals => {
-                              														:title => package.display_name,
-                              														:img => package.icon,
-                              														:soft_info => package.name,
-                              														:bold_info => package.version,
-                              														:packages => packages,
-                              														:editable => editable }
-	end
-	
-	def recent_packages
-	 pkgs = Package.recent(current_unit)
-	 shared_pkgs = Package.shared_recent(current_unit)
-	 render :partial => 'recent', :locals  => { :pkgs => pkgs, :shared_pkgs => shared_pkgs }
-	end
-	
-	def package_table(packages)
-	  # Split different categories into different arrays
-	  categorized = {}
-	  packages.each do |package|
-	    category_name = package.package_category.name
-      categorized[category_name] ||= []
-      categorized[category_name] << package
-    end
+  def package_header(package, editable = nil)
+    editable ||= false
+    render :partial => 'record_header', :locals => {:title => package.display_name,
+                                                    :img => package.icon,
+                                                    :soft_info => package.name,
+                                                    :bold_info => package.version,
+                                                    :packages => package.package_branch.packages,
+                                                    :editable => editable }
+  end
+  
+  def recent_packages
+   pkgs = Package.recent(current_unit)
+   shared_pkgs = Package.shared_recent(current_unit)
+   render :partial => 'recent', :locals  => { :pkgs => pkgs, :shared_pkgs => shared_pkgs }
+  end
+  
+  def package_table(package_branches)
+    categorized = package_branches.group_by {|pb| pb.package_category }
     
     output = ""
-	  # Render header and table for each category
-	  categorized.each_pair do |category_name, packages|
-	    output += render :partial => 'packages_of_category_table', :locals => {:category_name => category_name, :packages => packages}  
+    categorized.each_pair do |category, package_branches|
+      output += render :partial => 'packages/packages_of_category_table', :locals => {:category => category, :package_branches => package_branches}  
     end
     output.html_safe
   end
   
   # Check version tracker for package updates, display available updates
   def available_updates
-    # Grab all package branches in for this unit
-    pbs = PackageBranch.unit(current_unit)
-    # Remove branches if there isn't a new version
-    pbs.delete_if {|pb| !pb.new_version?(current_unit) }.compact
-    render :partial => 'available_updates', :locals => {:package_branches => pbs}
+    branches = PackageBranch.has_versions.unit(current_unit).includes(:version_tracker)
+    branches.delete_if {|pb| !pb.new_version?(current_unit) }.compact
+    render :partial => 'available_updates', :locals => {:package_branches => branches}
   end
   
   

@@ -1,6 +1,8 @@
 class Computer < ActiveRecord::Base
-  magic_mixin :manifest
-  # magic_mixin :client_pref
+  include IsAManifest
+  include HasAUnit
+  include HasAnEnvironment
+  include HasAnIcon
   
   belongs_to :computer_model
   belongs_to :computer_group
@@ -22,7 +24,8 @@ class Computer < ActiveRecord::Base
   validates_format_of :mac_address, :with => /^([0-9a-f]{2}(:|$)){6}$/ # mac_address attribute must look something like ff:12:ff:34:ff:56
   validates_uniqueness_of :mac_address,:name, :hostname
   
-  scope :search, lambda{|column, term|where(["#{column.to_s} LIKE ?", "%#{term}%"]) unless term.blank? or column.blank?}
+  scope :search, lambda {|column, term|where(["#{column.to_s} LIKE ?", "%#{term}%"]) unless term.blank? or column.blank?}
+  scope :eager_manifests, includes(bundle_includes + [{:computer_group => item_includes + bundle_includes}])
   
   # before_save :require_computer_group
   
@@ -48,7 +51,7 @@ class Computer < ActiveRecord::Base
     environment = Environment.where(:id => environment_id).first
     environment ||= self.environment
     environment ||= Environment.start
-    ComputerGroup.unit_and_environment(unit, environment).map {|cg| [cg.name,cg.id] }
+    ComputerGroup.unit(unit).environment(environment).map {|cg| [cg.name,cg.id] }
   end
 
   # Alias the computer_model icon to this computer
@@ -57,19 +60,20 @@ class Computer < ActiveRecord::Base
   end
   
   # Returns a hash representing the ManagedInstalls.plist
-    # that should be placed in /Library/Preferences on this client
-    def client_prefs
-      url = ActionMailer::Base.default_url_options[:host]
-      { :ClientIdentifier => client_identifier,
-        :DaysBetweenNotifications => 1,
-        :InstallAppleSoftwareUpdates => true,
-        :LogFile => "/Library/Managed Installs/Logs/ManagedSoftwareUpdate.log",
-        :LoggingLevel => 1,
-        :ManagedInstallsDir => "/Library/Managed Installs",
-        :ManifestURL => url,
-        :SoftwareRepoURL => url,
-        :UseClientCertificate => false }
-    end
+  # that should be placed in /Library/Preferences on this client
+  def client_prefs
+    url = ActionMailer::Base.default_url_options[:host]
+    url ||= "localhost"
+    { :ClientIdentifier => client_identifier,
+      :DaysBetweenNotifications => 1,
+      :InstallAppleSoftwareUpdates => true,
+      :LogFile => "/Library/Managed Installs/Logs/ManagedSoftwareUpdate.log",
+      :LoggingLevel => 1,
+      :ManagedInstallsDir => "/Library/Managed Installs",
+      :ManifestURL => url,
+      :SoftwareRepoURL => url,
+      :UseClientCertificate => false }
+  end
   
   # For will_paginate gem.  Sets the default number of records per page.
   def self.per_page
@@ -106,13 +110,13 @@ class Computer < ActiveRecord::Base
     h
   end
   
-  # Extended from manifest magic_mixin, adds mac_address matching
+  # Add mac_address matching
   def self.find_for_show(unit, id)
-    record = find_for_show_super(unit, id)
-    # For mac_address
-    record ||= self.where(:mac_address => id).first
-    # Return record
-    record
+    find_for_show_super(unit, id) || where(:mac_address => id).first
+  end
+  
+  def self.find_for_show_fast(shortname, unit)
+    Computer.unit(unit).where(:shortname => shortname).eager_items.eager_manifests.first
   end
 
   def client_identifier
@@ -202,7 +206,7 @@ class Computer < ActiveRecord::Base
     i = 0
     formatted = []
     while(i < 12 and i < value.length) do
-      formatted << value[i]
+      formatted << value[i,1]
       formatted << ":" if i.odd? and i != 11
       i += 1
     end
@@ -212,7 +216,7 @@ class Computer < ActiveRecord::Base
   # Bulk update
   def self.bulk_update_attributes(computers,computer_attributes)
     if computer_attributes.nil? or computers.empty? 
-      raise ComputerError.new ("Nothing to update")
+      raise ComputerError.new("Nothing to update")
     else
       computers.each do |c|
         c.update_attributes(computer_attributes)

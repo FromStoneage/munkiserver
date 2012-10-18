@@ -45,7 +45,8 @@ module PrivilegeGranter
   # = Computers =
   # =============
   def read_computers(unit_ids)
-    can [:read, :download, :update_warranty], Computer, :unit_id => unit_ids
+    can [:read, :client_prefs, :download, :update_warranty], Computer, :unit_id => unit_ids
+    can :read, ManagedInstallReport
   end
 
   def modify_computers(unit_ids)
@@ -65,10 +66,12 @@ module PrivilegeGranter
   # ============
   def read_packages(unit_ids)
     can [:read, :download, :check_for_updates, :index_shared], Package, :unit_id => unit_ids
+    can [:read], PackageBranch, :unit_id => unit_ids
   end
 
   def modify_packages(unit_ids)
     can [:update, :environment_change, :edit_multiple, :update_multiple], Package, :unit_id => unit_ids
+    can [:update], PackageBranch, :unit_id => unit_ids
   end
 
   def create_packages(unit_ids)

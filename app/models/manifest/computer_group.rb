@@ -1,6 +1,7 @@
 class ComputerGroup < ActiveRecord::Base
-  magic_mixin :manifest
-  magic_mixin :client_pref
+  include IsAManifest
+  include HasAUnit
+  include HasAnEnvironment
   
   has_many :computers
   

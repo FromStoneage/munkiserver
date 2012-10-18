@@ -1,5 +1,7 @@
 class Bundle < ActiveRecord::Base
-  magic_mixin :manifest
+  include IsAManifest
+  include HasAUnit
+  include HasAnEnvironment
 
   scope :order_alphabetical, order("name")
   

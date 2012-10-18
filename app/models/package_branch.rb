@@ -1,33 +1,34 @@
 # PackageBranch records don't belong to a specific unit or environment but an specific instance can be
 # scoped to return only results from a specific unit or environment
 class PackageBranch < ActiveRecord::Base
-  # Validations
-  validates_presence_of :name, :display_name
-  validates_uniqueness_of :name, :display_name
+  include HasAUnit
+
+  validates_presence_of :name, :display_name, :package_category_id
+  validates_uniqueness_of :name, :scope => [:unit_id]
   validates_format_of :name, :with => /^[^ -.]+$/, :message => "must not contain spaces or hyphens or dots"
   
-  attr_protected :id, :name
-  
-  attr_accessor :unit_id, :environment_id
+  attr_accessible :name, :display_name, :package_category_id
+  attr_accessor :environment_id
   
   # Relationships
   has_many :install_items, :dependent => :destroy
   has_many :uninstall_items, :dependent => :destroy
   has_many :managed_update_items, :dependent => :destroy
   has_many :optional_install_items, :dependent => :destroy
-  has_many :user_install_items, :dependent => :destroy
-  has_many :user_uninstall_items, :dependent => :destroy
-  has_many :user_allowed_items, :dependent => :destroy
   has_many :require_items, :dependent => :destroy
   has_many :update_for_items, :dependent => :destroy
   has_many :notifications, :as => :notified
-  # has many Packages
-  has_many :all_packages, :order => 'version desc', :class_name => "Package"
+  has_many :packages, :order => "version DESC", :dependent => :destroy
+  has_many :shared_packages, :class_name => "Package", :conditions => {:shared => true}
   has_one :version_tracker, :dependent => :destroy, :autosave => true
   
-  
-  before_validation :require_display_name
-  before_save :require_version_tracker
+  belongs_to :package_category
+
+  scope :find_for_index, lambda {|unit, env| has_versions.unit(unit).environment(env).order("name ASC").includes({:packages => [:environment, :package_branch]}, :package_category) }
+  scope :environment, lambda {|env| joins(:packages).where(:packages => {:environment_id => env.id}).uniq }
+  scope :has_versions, where('(SELECT COUNT(*) FROM `packages` WHERE `packages`.`package_branch_id` = `package_branches`.`id`) > 0')
+  scope :has_no_versions, where('(SELECT COUNT(*) FROM `packages` WHERE `packages`.`package_branch_id` = `package_branches`.`id`) = 0')
+  scope :shared, includes(:packages).where("packages.shared" => true)
 
   # Conforms a string to the package branch name constraints
   # => Replaces anything that are not alpheranumrical to underscores
@@ -46,15 +47,8 @@ class PackageBranch < ActiveRecord::Base
     end
   end
   
-  # Returns the latest package (based on version)
-  # in the package branch.  Results are scoped if scoped? returns true
-  def latest(unit_member = nil)
-    package(unit_member)
-  end
-  
-  # Get all package branches mentioned by unit
-  def self.unit(unit)
-    Package.unit(unit).map {|p| p.package_branch }.uniq
+  def latest
+    packages.limit(1).first
   end
   
   # Get the latest package within a unit and environment
@@ -74,15 +68,6 @@ class PackageBranch < ActiveRecord::Base
   
   def packages_where_unit_and_environment(unit,environment)
     packages.where(:environment_id => environment.id, :unit_id => unit.id)
-  end
-  
-  # Provides a scoped (if applicable) search in the Package association
-  def packages
-    if scoped?
-      all_packages.where(:unit_id => @unit_id, :environment_id => @environment_id)
-    else
-      all_packages
-    end
   end
   
   # Return all the packages that are shared and from the given unit
@@ -111,7 +96,7 @@ class PackageBranch < ActiveRecord::Base
   
   # True if a newer version is available in this branch
   def new_version?(unit = nil)
-    if version_tracker.version.nil?
+    if version_tracker.nil? or version_tracker.version.nil?
       return false
     else
       version_string = vtv(unit)
@@ -142,49 +127,15 @@ class PackageBranch < ActiveRecord::Base
     p.first
   end
   
-  # Checks if version_tracker is nil and creates one if it is
-  def require_version_tracker
-    self.version_tracker = build_version_tracker if self.version_tracker.nil?
-  end
-  
-  # Checks if display_name is blank, if so, it makes it the value of name
-  def require_display_name
-    self.display_name = self.name if self.display_name.blank?
-  end
-  
   # Grabs vtv from latest package
   def vtv(unit = nil)
     p = unit.present? ? latest_where_unit(unit) : latest
     p.vtv unless p.nil?
   end
-
-  # Sets iVars @environment_id and @unit_id to bind this record, temporarily, to a certain scope
-  def bind_to_scope(param1, param2 = nil)
-    if param2.nil?
-      # If only one param passed, assume it to be a unit_member
-      @environment_id = param1.environment_id
-      @unit_id        = param1.unit_id
-    else
-      # If both, assume first to be unit, second to be environment
-      @unit_id        = param1.id
-      @environment_id = param2.id
-    end
-    self.scoped?
-  end
-  
-  # Return boolean if @unit_id and @environment_id is set
-  def scoped?
-    @environment_id.present? and @unit_id.present?
-  end
   
   # Get the associated environment
   def environment
     Environment.find_by_id(@environment_id)
-  end
-  
-  # Get the associated unit
-  def unit
-    Unit.find_by_id(@unit_id)
   end
   
   # True if there is a newer version of in this package branch
@@ -208,11 +159,11 @@ class PackageBranch < ActiveRecord::Base
     packages_with_updates = []
     if unit.present?
       latest_packages = Package.latest_where_unit(unit)
-      packages_with_updates = latest_packages.delete_if {|p| !p.new_version? }      
+      packages_with_updates = latest_packages.delete_if {|p| p.nil? or !p.new_version? }      
     else
       Unit.all.each do |unit|
         latest_packages = Package.latest_where_unit(unit)
-        packages_with_updates += latest_packages.delete_if {|p| !p.new_version? }
+        packages_with_updates += latest_packages.delete_if {|p| p.nil? or !p.new_version? }
       end
     end
     packages_with_updates
@@ -233,10 +184,8 @@ class PackageBranch < ActiveRecord::Base
   
   # Get package branches with packages in a specified unit and environment
   # TO-DO Not very efficient, could be refactored
-  def self.unit_and_environment(unit,environment, scope_results = true)
-    pbs = Package.unit(unit).environment(environment).map {|p| p.package_branch }.uniq
-    pbs.each {|pb| pb.bind_to_scope(unit,environment) if scope_results }
-    pbs
+  def self.unit_and_environment(unit,environment)
+    Package.unit(unit).environment(environment).uniq_by {|branch| branch.id }
   end
   
   # Overrides default to string method.  Specifies version if this package
@@ -250,5 +199,18 @@ class PackageBranch < ActiveRecord::Base
   
   def to_param
     name
+  end
+  
+  def to_params
+    {:unit_shortname => unit.shortname,
+     :name => name}
+  end
+  
+  def obsolete?
+    packages.empty? and install_items.empty? and uninstall_items.empty? and managed_update_items.empty? and optional_install_items.empty? and require_items.empty? and update_for_items.empty?
+  end
+  
+  def icon
+    version_tracker.icon unless version_tracker.nil?
   end
 end

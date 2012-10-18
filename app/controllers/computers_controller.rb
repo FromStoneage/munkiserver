@@ -5,7 +5,7 @@ class ComputersController < ApplicationController
   
   def index
     # Scope computers to unit/environment and then order by relevent column and direction
-    @computers = Computer.unit_and_environment(current_unit, current_environment)
+    @computers = Computer.unit(current_unit).environment(current_environment)
     @computers = @computers.order(sort_column + ' ' + sort_direction)
     
     # Search for value on name attribute
@@ -48,13 +48,32 @@ class ComputersController < ApplicationController
     respond_to do |format|
       if @computer.present?
         format.html
-        format.manifest { render :text => @computer.to_plist}
         format.plist { render :text => @computer.to_plist}
-        format.client_prefs { render :text => @computer.client_prefs.to_plist }
+      else
+        format.html { render page_not_found }
+        format.plist { render page_not_found }
+        format.client_prefs { render page_not_found }
+      end
+    end
+  end
+
+  def client_prefs
+    respond_to do |format|
+      if @computer.present?
+        format.plist { render :text => @computer.client_prefs.to_plist}
+      else
+        format.plist { render page_not_found }
+      end
+    end
+  end
+
+  def show_plist
+    respond_to do |format|
+      if @computer.present?
+        format.manifest { render :text => @computer.to_plist}
       else
         MissingManifest.find_or_create_by_manifest_type_and_identifier_and_request_ip({:manifest_type => Computer.to_s, :identifier => params[:id], :request_ip => request.remote_ip})
         format.manifest { render :file => "public/404.html", :status => 404, :layout => false}
-        format.html { render :file => "public/404.html", :status => 404, :layout => false }
       end
     end
   end
@@ -208,7 +227,7 @@ class ComputersController < ApplicationController
     else
       flash[:error] = "#{@computer.name}'s warranty could not be updated."
     end
-    redirect_to computer_path(@computer.unit, @computer, anchor: 'warranty_tab')
+    redirect_to computer_path(@computer.unit, @computer, :anchor => 'warranty_tab')
   end
   
   private
@@ -216,7 +235,11 @@ class ComputersController < ApplicationController
   # This is really dense...refactor?
   def load_singular_resource
     action = params[:action].to_sym
-    if [:show, :edit, :update, :destroy].include?(action)      
+    if [:show, :client_prefs].include?(action)      
+      @computer = Computer.find_for_show_fast(params[:id], current_unit)
+    elsif [:show_plist].include?(action)      
+      @computer = Computer.find_for_show(nil, params[:id])
+    elsif [:edit, :update, :destroy].include?(action)
       @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:id]))
     elsif [:update_warranty].include?(action)      
       @computer = Computer.find_for_show(params[:unit_shortname], CGI::unescape(params[:computer_id]))

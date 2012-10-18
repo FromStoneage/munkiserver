@@ -10,21 +10,13 @@ class ApplicationController < ActionController::Base
   private
   include ApplicationHelper
   
-  # Run a rake task in the background
-  # TO-DO could improve performance if using a gem (rake loads environment every single time)
-  def call_rake(task, options = {})
-    options[:rails_env] ||= Rails.env
-    args = options.map { |k,v| "#{k.to_s.upcase}='#{v}'" }
-    system "rake #{task} #{args.join(' ')} --trace >> #{Rails.root}/log/rake.log &"
-  end
-  
   # Redirects user to login path if client logged in or the action is authorized
   def require_login
     if logged_in? or authorized?
       # Let them pass
     else
       flash[:warning] = "You must be logged in to view that page"
-      redirect_to login_path(:redirect => request.request_uri)
+      redirect_to login_path(:redirect => request.url)
     end
   end
   
@@ -55,7 +47,7 @@ class ApplicationController < ActionController::Base
   
   # Stub for controllers to override
   def load_singular_resource
-    raise Exception.new("Unable to load singular resource for #{params[:action]} action of #{params[:controller]} controller.")
+    raise Exception.new("#{params[:controller].capitalize} controller has not implemented load_singular_resource")
   end
   
   def authorize_resource

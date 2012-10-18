@@ -1,4 +1,18 @@
 namespace :chore do
+  desc "Removes MissingManifests created after X days ago (defaults to 30 days)"  
+  task :cleanup_missing_manifests, [:days_kept] => [:environment] do |t, args|
+    args.with_defaults(:days_kept => 30)
+    results = MissingManifest.where("created_at < :date", :date => (Date.today - args[:days_kept].to_i.days)).destroy_all
+    puts "Destroyed #{results.count} missing manifests"
+  end
+  
+  desc "Removes ManagedInstallReports created after X days ago (defaults to 30 days)"
+  task :cleanup_old_managed_install_reports, [:days_kept] => [:environment] do |t, args|
+    args.with_defaults(:days_kept => 30)
+    results = ManagedInstallReport.where("created_at < :date", :date => (Date.today - args[:days_kept].to_i.days)).destroy_all
+    puts "Destroyed #{results.count} managed install reports"
+  end
+  
   desc "Removes all unused (unreferenced) SystemProfile records."
   task :cleanup_system_profiles => :environment do
     results = SystemProfile.unused.map(&:destroy)
@@ -55,6 +69,7 @@ namespace :chore do
     end
   end
   
+<<<<<<< HEAD
   desc "Send email to the primary user of a computer that have no checked-in to MuniServer for the past 30 days"
   task :inactive_computer_primary_user_notification, [:unit] => :environment do |t, args|
     unit = Unit.where(:name => args.unit).first if args.unit.present?
@@ -82,3 +97,44 @@ def send_primary_user_notification(computer)
     end
   end
 end 
+=======
+  desc "Destroy item model records that reference nil packages"
+  task :destroy_stale_item_records => :environment do
+    InstallItem.destroy_stale_records
+    BundleItem.destroy_stale_records
+    ManagedUpdateItem.destroy_stale_records
+    OptionalInstallItem.destroy_stale_records
+    RequireItem.destroy_stale_records
+    UninstallItem.destroy_stale_records
+    UpdateForItem.destroy_stale_records
+  end
+  
+  desc "Migrate to unit-scoped package branches"
+  task :migrate_package_branches => :environment do
+    MigratePackageBranches.new(Logger.new(STDOUT)).migrate
+  end
+  
+  desc "Fetch data for a version tracker record"
+  task :fetch_version_tracker_data => :environment do
+    puts VersionTracker.fetch_data(ENV['ID']).inspect
+  end
+
+  desc "Destroy package branches that have no packages"
+  task :destroy_unused_package_branches => :environment do
+    unused_branches = PackageBranch.has_no_versions
+    if unused_branches.present?
+      puts "Attempting to destroy #{unused_branches.count} package branches: "
+      unused_branches.each do |branch| 
+        print "\t#{branch.name}..."
+        if branch.destroy
+          puts "destroyed"
+        else
+          puts "failed"
+        end
+      end
+    else
+      puts "No unused branches found"
+    end
+  end
+end
+>>>>>>> upstream/master

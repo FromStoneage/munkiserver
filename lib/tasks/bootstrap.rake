@@ -14,7 +14,7 @@ namespace :bootstrap do
   
   desc "Intialize PackageCategory with default categories"
   task :package_categories => :environment do
-    path = Rails.root.to_s + "/public/default_icons/package_categories"
+    path = "#{Rails.root}/lib/default_icons/package_categories"
     a = [{:name => "Misc", :icon_path => "#{path}/package.png"},
          {:name => "Application", :icon_path => "#{path}/application.png"},
          {:name => "Admin", :icon_path => "#{path}/admin.png"},
@@ -42,7 +42,7 @@ namespace :bootstrap do
   
   desc "Initialize ComputerModel with Apple products"
   task :computer_models => :environment do
-    path = Rails.root.to_s + "/public/default_icons/computer_models"
+    path = "#{Rails.root}/lib/default_icons/computer_models"
     a = [{:name => "eMac",:icon_path => "#{path}/com.apple.emac.png"},
          {:name => "iBook G4 (12-inch)",:icon_path => "#{path}/com.apple.ibook-g4-12.png"},
          {:name => "iBook G4 (14-inch)",:icon_path => "#{path}/com.apple.ibook-g4-14.png"},
@@ -277,6 +277,26 @@ namespace :bootstrap do
           privilege.unit_specific = true
           privilege.save
         end
+      end
+    end
+  end
+
+  desc "Create site_default manifest" 
+  task :site_default_manifest => :environment do
+    if Computer.find_by_mac_address("00:00:00:00:00:00").blank?
+      Rake::Task["bootstrap:unit"].invoke if Unit.all.empty?
+      Rake::Task["bootstrap:environments"].invoke if Environment.all.empty?
+      c = Computer.new
+      c.name = "site_default"
+      c.environment = Environment.find_by_name("Production") || Environment.first
+      c.hostname = "site-default"
+      c.mac_address = "00:00:00:00:00:00"
+      c.description = "This computer record serves as a fallback manifest for computers without a ClientIdentifier"
+      c.unit_id = Unit.first.id
+      if c.save
+        puts "Saved site_default manifest to first unit"
+      else
+        puts "Failed to save site_default manifest to first unit: #{c.errors.messages.inspect}"
       end
     end
   end

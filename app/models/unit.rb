@@ -1,12 +1,10 @@
 class Unit < ActiveRecord::Base
-  magic_mixin :client_pref
-  
-  # Relationships
   has_many :computers, :dependent => :destroy
   has_many :computer_groups, :dependent => :destroy
   has_many :bundles, :dependent => :destroy
   has_many :packages, :dependent => :destroy
   has_many :principals, :through => :permissions
+  has_many :package_branches, :dependent => :destroy
   
   scope :from_other_unit, lambda {|u| where("id != ?", u.id)}
   
